@@ -6,7 +6,7 @@ local ReaderView = require("apps/reader/modules/readerview")
 local Size = require("ui/size")
 local UIManager = require("ui/uimanager")
 local util = require("util")
-
+local CreDocument = require("document/credocument")
 local Dispatcher = require("dispatcher")  -- luacheck:ignore
 local InfoMessage = require("ui/widget/infomessage")
 
@@ -53,6 +53,8 @@ end
 ReaderRolling.onPreRenderDocument = function(self)
     -- Let's do it with a setting toggable via the menu item defined above
     isVerticalHackEnabled = self.ui.doc_settings:isTrue("vertical_reading_hack")
+    local cre = CreDocument:engineInit()
+    cre.setPrefersVerticalCJKWidthAdjustmentMetrics(isVerticalHackEnabled)
     if not isVerticalHackEnabled then
         return
     end    

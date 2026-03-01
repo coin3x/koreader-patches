@@ -1,0 +1,241 @@
+From 4184ae10b463f332c4b24578c4547dfcccd06dda Mon Sep 17 00:00:00 2001
+From: coin3x <coin3x@users.noreply.github.com>
+Date: Sun, 1 Mar 2026 08:59:52 +0800
+Subject: [PATCH] TextLang: make CJK width adjustment table configurable and include a vertical variant
+
+The vertical rendering hack (see koreader/koreader#11469) mainly works by
+rotating glyphs 90 degrees. This makes glyphs like:
+- dividing punctuations (jlreq cl-04)
+- middle dots (jlreq cl-05)
+unsuitable for width reduction.
+
+This adds a runtime option to switch to alternative metrics.
+
+---
+ crengine/include/textlang.h |  10 +++
+ crengine/src/textlang.cpp   | 137 +++++++++++++++++++++++++++++++++---
+ 2 files changed, 137 insertions(+), 10 deletions(-)
+
+diff --git a/crengine/include/textlang.h b/crengine/include/textlang.h
+index c8fecd9f..36ae9d62 100644
+--- a/crengine/include/textlang.h
++++ b/crengine/include/textlang.h
+@@ -181,7 +181,11 @@ class TextLangMan
+     static HyphMethod * _soft_hyphens_method;  // instance of hyphman SoftHyphensHyph
+     static HyphMethod * _algo_hyph_method;     // instance of hyphman AlgoHyph
+ 
++    static bool _prefers_vertical_cjk_width_adjustment_metrics;
++
+     static HyphMethod * getHyphMethodForLang( lString32 lang_tag ); // Used by TextLangCfg
++
++    static void _initializeCJKWidthAdjustmentTables();
+ public:
+     static void uninit();
+     static lUInt32 getHash();
+@@ -226,6 +230,11 @@ public:
+         return &_lang_cfg_list;
+     }
+ 
++    static bool getPrefersVerticalCJKWidthAdjustmentMetrics() { return _prefers_vertical_cjk_width_adjustment_metrics; }
++    static void setPrefersVerticalCJKWidthAdjustmentMetrics( bool prefer );
++    // 0: sc, 1: tc, 2: ja
++    static void setCJKWidthAdjustmentTableOverride( int language, bool vertical, const char *override );
++
+     TextLangMan();
+     ~TextLangMan();
+ };
+@@ -267,6 +276,7 @@ class TextLangCfg
+ 
+     void resetCounters();
+ 
++    void updateCJKWidthAdjustmentTable( bool vertical );
+ public:
+     lString32 getLangTag() const { return _lang_tag; }
+ 
+diff --git a/crengine/src/textlang.cpp b/crengine/src/textlang.cpp
+index 936bdbf5..14d15a7b 100644
+--- a/crengine/src/textlang.cpp
++++ b/crengine/src/textlang.cpp
+@@ -8,6 +8,9 @@
+ #include "../include/textlang.h"
+ #include "../include/hyphman.h"
+ 
++#include <string>
++#include <sstream>
++
+ #if (USE_UTF8PROC==1)
+ #include <utf8proc.h>
+ #endif
+@@ -128,7 +131,10 @@ HyphMethod * TextLangMan::_no_hyph_method = NULL;
+ HyphMethod * TextLangMan::_algo_hyph_method = NULL;
+ HyphMethod * TextLangMan::_soft_hyphens_method = NULL;
+ 
++bool TextLangMan::_prefers_vertical_cjk_width_adjustment_metrics = false;
++
+ TextLangMan::TextLangMan() {
++    _initializeCJKWidthAdjustmentTables();
+ }
+ 
+ TextLangMan::~TextLangMan() {
+@@ -280,6 +286,13 @@ void TextLangMan::resetCounters() {
+     }
+ }
+ 
++void TextLangMan::setPrefersVerticalCJKWidthAdjustmentMetrics( bool prefer ) {
++    _prefers_vertical_cjk_width_adjustment_metrics = prefer;
++    for ( int i=0; i<_lang_cfg_list.length(); i++ ) {
++        _lang_cfg_list[i]->updateCJKWidthAdjustmentTable(prefer);
++    }
++}
++
+ // TextLangCfg object: per language holder of language specificities
+ 
+ // For CSS "content: open-quote / close-quote"
+@@ -974,6 +987,108 @@ static const cjk_width_adjustment_table_t japanese_cjk_width_adjustment_table =
+ // but in ' 。" ', we wouldn't know (it might close the previous sentence,
+ // or start a new quote after the full stop...)
+ 
++static cjk_width_adjustment_table_t simplified_chinese_cjk_width_adjustment_table_vertical;
++static cjk_width_adjustment_table_t traditional_chinese_cjk_width_adjustment_table_vertical;
++static cjk_width_adjustment_table_t japanese_cjk_width_adjustment_table_vertical;
++
++static cjk_width_adjustment_table_t simplified_chinese_cjk_width_adjustment_table_overrides[2];
++static cjk_width_adjustment_table_t traditional_chinese_cjk_width_adjustment_table_overrides[2];
++static cjk_width_adjustment_table_t japanese_cjk_width_adjustment_table_overrides[2];
++
++static const cjk_width_adjustment_table_t* active_simplified_chinese_cjk_width_adjustment_table[2] = {
++    &simplified_chinese_cjk_width_adjustment_table,
++    &simplified_chinese_cjk_width_adjustment_table_vertical,
++};
++static const cjk_width_adjustment_table_t* active_traditional_chinese_cjk_width_adjustment_table[2] = {
++    &traditional_chinese_cjk_width_adjustment_table,
++    &traditional_chinese_cjk_width_adjustment_table_vertical,
++};
++static const cjk_width_adjustment_table_t* active_japanese_cjk_width_adjustment_table[2] = {
++    &japanese_cjk_width_adjustment_table,
++    &japanese_cjk_width_adjustment_table_vertical,
++};
++
++static bool cjk_width_adjustment_table_vertical_initialized = false;
++
++// Until we have consensus on vertical metrics, use horizontal ones as fallback
++void TextLangMan::_initializeCJKWidthAdjustmentTables() {
++    if ( !cjk_width_adjustment_table_vertical_initialized ) {
++        cjk_width_adjustment_table_vertical_initialized = true;
++        memcpy(simplified_chinese_cjk_width_adjustment_table_vertical, simplified_chinese_cjk_width_adjustment_table, sizeof(cjk_width_adjustment_table_t));
++        memcpy(traditional_chinese_cjk_width_adjustment_table_vertical, traditional_chinese_cjk_width_adjustment_table, sizeof(cjk_width_adjustment_table_t));
++        memcpy(japanese_cjk_width_adjustment_table_vertical, japanese_cjk_width_adjustment_table, sizeof(cjk_width_adjustment_table_t));
++    }
++}
++
++static bool parseIntoTable(const std::string& input, cjk_width_adjustment_table_t* out) {
++    constexpr int expectedCount = sizeof(simplified_chinese_cjk_width_adjustment_table) / sizeof(simplified_chinese_cjk_width_adjustment_table[0][0]);
++
++    std::istringstream ss(input);
++    std::string token;
++    int i = 0;
++
++    char* out_ = (char*)out;
++    while (std::getline(ss, token, ',')) {
++        if (i >= expectedCount) return false;
++        try {
++            int value = std::stoi(token);
++            if (value < -8 || value > 8) {
++                printf("CRE WARNING: %d is not a valid CJK width adjustment table value\n", value);
++                return false;
++            }
++            out_[i++] = value;
++        } catch (...) {
++            return false;
++        }
++    }
++
++    return i == expectedCount;
++}
++
++void TextLangMan::setCJKWidthAdjustmentTableOverride( int language, bool vertical, const char *override ) {
++    const cjk_width_adjustment_table_t** tablePointerToUpdate = NULL;
++    cjk_width_adjustment_table_t* overrideTable = NULL;
++    const cjk_width_adjustment_table_t* defaultTable = NULL;
++    int idx = vertical ? 1 : 0;
++    if ( language == 0 ) { // sc
++        tablePointerToUpdate = &active_simplified_chinese_cjk_width_adjustment_table[idx];
++        overrideTable = &simplified_chinese_cjk_width_adjustment_table_overrides[idx];
++        defaultTable = vertical
++            ? &simplified_chinese_cjk_width_adjustment_table_vertical
++            : &simplified_chinese_cjk_width_adjustment_table;
++    } else if ( language == 1 ) { // tc
++        tablePointerToUpdate = &active_traditional_chinese_cjk_width_adjustment_table[idx];
++        overrideTable = &traditional_chinese_cjk_width_adjustment_table_overrides[idx];
++        defaultTable = vertical
++            ? &traditional_chinese_cjk_width_adjustment_table_vertical
++            : &traditional_chinese_cjk_width_adjustment_table;
++    } else if ( language == 2 ) { // ja
++        tablePointerToUpdate = &active_japanese_cjk_width_adjustment_table[idx];
++        overrideTable = &japanese_cjk_width_adjustment_table_overrides[idx];
++        defaultTable = vertical
++            ? &japanese_cjk_width_adjustment_table_vertical
++            : &japanese_cjk_width_adjustment_table;
++    } else {
++        printf("CRE WARNING: unknown CJK width adjustment table override language\n");
++        return;
++    }
++
++    std::string override_(override);
++    if ( override_.empty() ) {
++        if ( *tablePointerToUpdate != defaultTable ) {
++            *tablePointerToUpdate = defaultTable;
++        }
++        return;
++    }
++
++    if ( parseIntoTable(override_, overrideTable) ) {
++        *tablePointerToUpdate = overrideTable;
++    } else {
++        *tablePointerToUpdate = defaultTable;
++    }
++    // Force an update
++    setPrefersVerticalCJKWidthAdjustmentMetrics(_prefers_vertical_cjk_width_adjustment_metrics);
++}
+ 
+ // Instantiate a new TextLangCfg with properties adequate to the provided lang_tag
+ TextLangCfg::TextLangCfg( lString32 lang_tag ) {
+@@ -1062,16 +1177,7 @@ TextLangCfg::TextLangCfg( lString32 lang_tag ) {
+         _is_ja_zh = true;
+         _is_zh_TC = true;
+     }
+-    // CJK width adjustment tables
+-    if ( _is_ja ) {
+-        _cjk_width_adjustment_table = &japanese_cjk_width_adjustment_table;
+-    }
+-    else if ( _is_zh_TC ) {
+-        _cjk_width_adjustment_table = &traditional_chinese_cjk_width_adjustment_table;
+-    }
+-    else { // Otherwise, default to Simplified Chinese
+-        _cjk_width_adjustment_table = &simplified_chinese_cjk_width_adjustment_table;
+-    }
++    updateCJKWidthAdjustmentTable(TextLangMan::getPrefersVerticalCJKWidthAdjustmentMetrics());
+ 
+ #if USE_HARFBUZZ==1
+     _hb_language = hb_language_from_string(UnicodeToLocal(hb_lang_tag).c_str(), -1);
+@@ -1244,6 +1350,17 @@ void TextLangCfg::resetCounters() {
+     _quote_nesting_level = 0;
+ }
+ 
++void TextLangCfg::updateCJKWidthAdjustmentTable( bool vertical ) {
++    int idx = vertical ? 1 : 0;
++    if ( _is_ja ) {
++        _cjk_width_adjustment_table = active_japanese_cjk_width_adjustment_table[idx];
++    } else if ( _is_zh_TC ) {
++        _cjk_width_adjustment_table = active_traditional_chinese_cjk_width_adjustment_table[idx];
++    } else { // Otherwise, default to Simplified Chinese
++        _cjk_width_adjustment_table = active_simplified_chinese_cjk_width_adjustment_table[idx];
++    }
++}
++
+ lString32 & TextLangCfg::getOpeningQuote( bool update_level ) {
+     if ( !update_level )
+         return _open_quote1;
+-- 
+2.53.0
+

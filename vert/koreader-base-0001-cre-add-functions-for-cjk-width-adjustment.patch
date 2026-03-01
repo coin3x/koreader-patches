@@ -1,0 +1,49 @@
+From cc650f97d6a2fbfc076692f0e863c5d056731488 Mon Sep 17 00:00:00 2001
+From: coin3x <coin3x@users.noreply.github.com>
+Date: Sun, 1 Mar 2026 09:02:28 +0800
+Subject: [PATCH] cre: add functions for CJK width adjustment
+
+---
+ cre.cpp | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/cre.cpp b/cre.cpp
+index 221e4cbd..78955aaa 100644
+--- a/cre.cpp
++++ b/cre.cpp
+@@ -688,6 +688,23 @@ static int getTextLangStatus(lua_State *L) {
+ 	return 3;
+ }
+ 
++static int setPrefersVerticalCJKWidthAdjustmentMetrics(lua_State *L) {
++    bool prefers = false;
++    if (lua_isboolean(L, 1)) {
++		prefers = lua_toboolean(L, 1);
++	}
++    TextLangMan::setPrefersVerticalCJKWidthAdjustmentMetrics(prefers);
++	return 0;
++}
++
++static int setCJKWidthAdjustmentTableOverride(lua_State *L) {
++    int language = luaL_checkint(L, 1);
++    int vertical = lua_toboolean(L, 2);
++    const char *override = luaL_checkstring(L, 3);
++    TextLangMan::setCJKWidthAdjustmentTableOverride(language, vertical, override);
++    return 0;
++}
++
+ static int loadDocument(lua_State *L) {
+ 	CreDocument *doc = (CreDocument*) luaL_checkudata(L, 1, "credocument");
+ 	const char *file_name = luaL_checkstring(L, 2);
+@@ -4292,6 +4309,8 @@ static const struct luaL_Reg cre_func[] = {
+     {"getSelectedHyphDict", getSelectedHyphDict},
+     {"setHyphDictionary", setHyphDictionary},
+     {"getTextLangStatus", getTextLangStatus},
++    {"setPrefersVerticalCJKWidthAdjustmentMetrics", setPrefersVerticalCJKWidthAdjustmentMetrics},
++    {"setCJKWidthAdjustmentTableOverride", setCJKWidthAdjustmentTableOverride},
+     {"getLatestDomVersion", getLatestDomVersion},
+     {"getDomVersionWithNormalizedXPointers", getDomVersionWithNormalizedXPointers},
+     {"setUserHyphenationDict", setUserHyphenationDict},
+-- 
+2.53.0
+
