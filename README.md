@@ -3,8 +3,8 @@ I wasn't satisfied with the hardcored metrics, so in the past I did binary patch
 
 The vertical reading hack (koreader/koreader#11469) made this more complex because
 the width of some glyphs (?!:;) can be reduced in the horizontal mode, but not in
-vertical mode (the height will be reduced instead). This motivates me to add logic
-and API to the rendering engine to handle these.
+vertical mode (the height will be reduced otherwise). This motivates me to add logic
+and API to the rendering engine to handle these requirements.
 
 ### How to use this
 1. Clone koreader/koreader.
