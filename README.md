@@ -23,6 +23,8 @@ and API to the rendering engine to handle these requirements.
 6. Edit `settings.reader.lua` (you should exit KOReader first):
 	- Add a `cre_cjk_width_adjustment_table_override` entry. See `vert/2-cre-apply-cjk-width-adjustment-table-override.lua` for an example.
 
+See https://github.com/koreader/crengine/blob/c616009bfa62fb2758fa8195271966a64320b945/crengine/src/textlang.cpp#L810 for what the number sequence means.
+
 ### Credits
 - `vert/2-cre-rotate-japanese-book.lua`: Based on https://github.com/plateaukao/koreader_patch_vertical_read/blob/c7e84319c9354432a5e7aabf0655afbe44aefb2c/2-cre-rotate-japanese-book.lua
 
