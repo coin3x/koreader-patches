@@ -1,4 +1,4 @@
-## Configurable CJK puncutation width adjustment with support for vertical reading hack
+## Configurable CJK punctuation width adjustment with support for vertical reading hack
 I wasn't satisfied with the hardcored metrics, so in the past I did binary patching.
 
 The vertical reading hack (koreader/koreader#11469) made this more complex because
