@@ -1,5 +1,6 @@
 ## Configurable CJK punctuation width adjustment with support for vertical reading hack
-I wasn't satisfied with the hardcored metrics, so in the past I did binary patching.
+I wasn't satisfied with the hard-coded metrics, and binary patching for the adjustment 
+table was enough to avoid recompiling the app, until...
 
 The vertical reading hack (koreader/koreader#11469) made this more complex because
 the width of some glyphs (?!:;) can be reduced in the horizontal mode, but not in
